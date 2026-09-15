@@ -6,21 +6,106 @@
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-green-900: #153627;
+  --color-green-700: #1d4533;
+  --color-terracotta-700: #5e3122;
+  --color-amber-600: #c97b3d;
+  --color-cream-050: #fffdf8;
+  --color-cream-100: #fbf4ec;
+  --color-cream-200: #f7eae0;
+  --color-cream-300: #f2e9dd;
+  --color-cream-400: #f2e4d6;
+  --color-cream-500: #efe6d8;
+  --color-ink-900: #2a2320;
+  --color-ink-700: #3a3129;
+  --color-ink-500: #6b5d52;
+  --color-ink-400: #8a7a6c;
+  --color-ink-300: #b3a596;
+  --color-ink-200: #c9bfaf;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+  /* Cores — aliases semânticos */
+  --color-bg-app: var(--color-cream-200);
+  --color-bg-surface: var(--color-cream-050);
+  --color-bg-surface-alt: var(--color-cream-100);
+  --color-bg-track: var(--color-cream-500);
+  --color-bg-tab-track: var(--color-cream-300);
+  --color-bg-tag: var(--color-cream-400);
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  --color-primary: var(--color-green-700);
+  --color-primary-hover: var(--color-green-900);
+  --color-on-primary: var(--color-cream-200);
+
+  --color-accent: var(--color-terracotta-700);
+  --color-warning: var(--color-amber-600);
+
+  --color-text-primary: var(--color-ink-900);
+  --color-text-body: var(--color-ink-700);
+  --color-text-muted: var(--color-ink-400);
+  --color-text-faint: var(--color-ink-300);
+  --color-text-disabled: var(--color-ink-200);
+
+  --color-border: rgba(29, 69, 51, 0.1);
+  --color-border-soft: rgba(29, 69, 51, 0.08);
+  --color-border-strong: rgba(29, 69, 51, 0.18);
+  --color-border-accent: rgba(94, 49, 34, 0.25);
+  --color-scrim: rgba(29, 32, 26, 0.32);
+
+  /* Tipografia */
+  --font-sans: "Work Sans", system-ui, sans-serif;
+
+  --text-display: 24px;
+  --text-display--line-height: 1.25;
+  --text-headline: 22px;
+  --text-headline--line-height: 1.25;
+  --text-title: 20px;
+  --text-title--line-height: 1.3;
+  --text-subtitle: 16px;
+  --text-subtitle--line-height: 1.3;
+  --text-body-lg: 15px;
+  --text-body-lg--line-height: 1.4;
+  --text-body: 14px;
+  --text-body--line-height: 1.5;
+  --text-body-sm: 13.5px;
+  --text-body-sm--line-height: 1.5;
+  --text-label: 12.5px;
+  --text-label--line-height: 1.3;
+  --text-caption: 12px;
+  --text-caption--line-height: 1.4;
+  --text-micro: 11px;
+  --text-micro--line-height: 1.3;
+
+  --tracking-tight: -0.01em;
+  --tracking-wide: 0.01em;
+  --tracking-eyebrow: 0.06em;
+
+  /* Espaçamento */
+  --spacing-1: 2px;
+  --spacing-2: 4px;
+  --spacing-3: 6px;
+  --spacing-4: 8px;
+  --spacing-5: 10px;
+  --spacing-6: 12px;
+  --spacing-7: 14px;
+  --spacing-8: 16px;
+  --spacing-9: 18px;
+  --spacing-10: 20px;
+  --spacing-11: 22px;
+  --spacing-12: 24px;
+  --spacing-14: 28px;
+  --spacing-16: 32px;
+
+  /* Raios de borda */
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 20px;
+  --radius-pill: 20px;
+
+  /* Sombras */
+  --shadow-card: 0 0 60px rgba(29, 69, 51, 0.06);
+  --shadow-sheet: 0 -8px 30px rgba(0, 0, 0, 0.12);
+  --shadow-drawer: 4px 0 24px rgba(0, 0, 0, 0.08);
+  --shadow-auth-card: 0 8px 40px rgba(29, 69, 51, 0.08);
+  --shadow-fab: 0 6px 18px rgba(29, 69, 51, 0.3);
 }
