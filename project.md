@@ -136,6 +136,11 @@ The Dashboard is the entry point of the app — a synthesized view of the ToDo L
 
 - Acts as the visual anchor for the whole app's palette: primary green (`#1D4533`) for on-track states, terracotta/brown (`#5E3122`) for goal accents and drift warnings (instead of red, keeping the supportive/non-punitive tone established in the ToDo UI), and the light background surface (`#F7EAE0`) unifying the dashboard with the rest of the Hub.
 
+## Tech Stack Decisions
+
+- **Database: Neon (Postgres serverless).** Chosen over Supabase (bundles auth/storage we don't need yet), Turso/SQLite (fewer relational features to learn on), and self-hosted Postgres (infra overhead not worth it for a solo project deploying to Vercel). Neon gives real Postgres with no vendor lock-in and integrates well with Vercel.
+- **ORM: Drizzle.** Chosen over Prisma (heavier runtime, historically worse cold starts in serverless) and Kysely (more manual, no declarative schema). Drizzle is SQL-first, type-safe end to end, and keeps migrations simple via `drizzle-kit`.
+
 # Thinks to think later:
 
 1. On the "Failure Feedback Loop": You mention the app suggests adjustments (e.g., "reduce tomorrow's practice to 1h"), but who decides whether to accept or reject that suggestion? Is there a friction cost if the user ignores the suggestion? Could that create a secondary failure loop where users dismiss adjustments and then miss the task again?
