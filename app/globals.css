@@ -51,7 +51,7 @@
   --color-scrim: rgba(29, 32, 26, 0.32);
 
   /* Tipografia */
-  --font-sans: "Work Sans", system-ui, sans-serif;
+  --font-sans: var(--font-work-sans), system-ui, sans-serif;
 
   --text-display: 24px;
   --text-display--line-height: 1.25;
