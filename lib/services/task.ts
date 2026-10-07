@@ -1,56 +1,38 @@
-import { db as defaultDb } from "@/lib/db";
+import { db as Database } from "@/lib/db";
 import { tasks } from "@/lib/db/schemas";
-import { and, eq, gte, lt, count } from "drizzle-orm";
+import { and, count, eq, gte, lt } from "drizzle-orm";
 
-const ACTIVE_TASKS_LIMIT_PER_WEEK = 5;
+const TASK_LIMIT_BY_GOAL = 5;
 
-export async function getTaskCounter(
+export async function isInTaskLimit(
   goalId: number,
-  scheduledFor: Date,
-  db = defaultDb,
+  scheduled_for: Date,
+  db: typeof Database = Database,
 ) {
-  const weekStart = getWeekStart(scheduledFor);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 7);
+  const comecoDaSemana = getWeekStart(scheduled_for);
+  const fimDaSemana = new Date(comecoDaSemana);
+  fimDaSemana.setDate(fimDaSemana.getDate() + 7);
 
-  const result = await db
-    .select({ count: count() })
+  const [{ quantasTasksTemPorEsseGoal }] = await db
+    .select({ quantasTasksTemPorEsseGoal: count() })
     .from(tasks)
     .where(
       and(
         eq(tasks.goalId, goalId),
         eq(tasks.completed, false),
-        gte(tasks.scheduledFor, weekStart),
-        lt(tasks.scheduledFor, weekEnd),
+        gte(tasks.scheduledFor, comecoDaSemana),
+        lt(tasks.scheduledFor, fimDaSemana),
       ),
     );
 
-  return result[0]?.count ?? 0;
+  return quantasTasksTemPorEsseGoal < TASK_LIMIT_BY_GOAL;
 }
 
-export async function validateTaskLimit(
-  goalId: number | undefined,
-  scheduledFor: Date | undefined,
-): Promise<{ valid: boolean; message?: string }> {
-  if (!goalId || !scheduledFor) {
-    return { valid: true };
-  }
-
-  const count = await getTaskCounter(goalId, scheduledFor);
-
-  if (count >= ACTIVE_TASKS_LIMIT_PER_WEEK) {
-    return {
-      valid: false,
-      message: `Goal already has ${ACTIVE_TASKS_LIMIT_PER_WEEK} active tasks this week. Complete one before adding more.`,
-    };
-  }
-
-  return { valid: true };
-}
-
-function getWeekStart(date: Date): Date {
+export function getWeekStart(date: Date): Date {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-  return new Date(d.setDate(diff));
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }

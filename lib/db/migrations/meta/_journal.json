@@ -8,6 +8,27 @@
       "when": 1790725727569,
       "tag": "0000_easy_star_brand",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790902282244,
+      "tag": "0001_redundant_black_bolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791248989218,
+      "tag": "0002_opposite_dracula",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791249281077,
+      "tag": "0003_flippant_shadowcat",
+      "breakpoints": true
     }
   ]
 }
