@@ -13,8 +13,12 @@ The key differentiator of this ToDo List is that it doesn't just track completio
 
 When a task linked to a goal is not completed, the user is prompted to answer a short "Why couldn't you complete this?" input. This reason then feeds two things:
 
-1. **Daily Adjustment** — based on the reason given, the app suggests an adjustment to the user's daily tasks (e.g., reducing scope, rescheduling, breaking the task into smaller steps) to help realign with the original goal without abandoning it. When adjustment is declined by the user, when has a three time failure the task in adjusted automatically.
+1. **Daily Adjustment** — based on the reason given, the app suggests an adjustment to the user's daily tasks (e.g., reducing scope, rescheduling, breaking the task into smaller steps) to help realign with the original goal without abandoning it.
+   - **Decline/ignore handling:** not responding to the prompt by end of day counts the same as an explicit decline — the app never forces a response, since that would contradict the non-punitive tone.
+   - **Auto-adjustment after 3 cycles:** after the 3rd missed-and-declined cycle on the same task, the app auto-applies whatever adjustment it last suggested (it commits to its own last offer rather than escalating to something new or more aggressive).
+   - An unresolved decline/ignore loop (no adjustment ever accepted or auto-applied) is itself a drift signal — see Drift Indicator below.
 2. **Journal Linking** — the failure reason can be linked to an entry in the Journaling module, so the user can reflect more deeply on recurring patterns of failure and connect emotional/contextual notes to specific missed tasks.
+   - This adjustment-suggestion CTA only fires from this **live** failure-prompt flow (task still today/upcoming). It does not apply to entries linked retroactively — see Journaling → Linking Flow.
 
 This creates a closed loop between **Goal → Task → Failure → Reflection → Adjustment**, keeping the user inside their intended "life flow" instead of just accumulating unchecked boxes.
 
@@ -23,6 +27,8 @@ This creates a closed loop between **Goal → Task → Failure → Reflection �
 - **Daily Task**: atomic, checkable, optionally recurring, can optionally reference a parent goal.
 - **Monthly/Yearly Goal**: broader objective, made up of nested tasks (weekly/daily) that contribute progress toward it.
 - **Relationship**: a Daily Task can be an "orphan" (no goal attached) or a "milestone" (attached to a Monthly/Yearly Goal). Only milestone tasks trigger the failure-reason flow.
+- **Goal-bloat prevention** ([Issue #22](https://github.com/jnx257/wellnesshub/issues/22)): at most 5 active (incomplete) milestone tasks per goal per week. This is enforced as a **soft warning, not a hard block** — when linking a 6th active task to the same goal in the same week, the UI shows an inline confirm ("This goal already has 5 active tasks this week — link anyway?") rather than refusing the action outright. A hard block would create friction for legitimate edge cases (e.g. an urgent task that genuinely belongs to the goal); the point is to discourage reflexive linking, not to disallow it.
+- **Goal progress %** (MVP): `completed / total linked milestone tasks`, unweighted. This is a known simplification — a goal can show 75% complete while its single hardest/most-critical task is the one still incomplete. Weighting by task importance would require an importance field that doesn't exist yet; revisit if this proves misleading in practice.
 
 ## UI
 
@@ -97,8 +103,8 @@ The Journaling UI serves as the reflective counterpart to the ToDo List — the 
 **Linking Flow (core differentiator)**
 
 - Entries can be linked to ToDo items in two ways:
-  1. **Inbound from ToDo**: when a milestone task fails, the user can jump straight into a new Journal entry with the task and failure-reason pre-filled as context (from the ToDo failure flow).
-  2. **Manual linking**: from within an entry, the user can search and attach any existing task or goal (e.g., writing a reflection first, then realizing it relates to "Learning Piano").
+  1. **Inbound from ToDo**: when a milestone task fails, the user can jump straight into a new Journal entry with the task and failure-reason pre-filled as context (from the ToDo failure flow). This is the only path that shows the **adjustment-suggestion CTA**, since the task is still live/actionable (today or upcoming).
+  2. **Manual linking**: from within an entry, the user can search and attach any existing task or goal (e.g., writing a reflection first, then realizing it relates to "Learning Piano"). This path is retroactive and **never** surfaces an adjustment suggestion — the task is already past, so there's nothing left to adjust. It still counts fully toward timeline markers and Review Mode.
 - Linked entries appear as a small timeline marker on the corresponding **Goal Card** in the Goals View, so the user can see, at a glance, which goals have accumulated reflection over time and which haven't.
 
 **Review Mode**
@@ -122,14 +128,14 @@ The Dashboard is the entry point of the app — a synthesized view of the ToDo L
 **Drift Indicator (core differentiator)**
 
 - Each Goal Card on the Dashboard includes a compact visual signal — not just progress %, but _trend_:
-  - 🟢 **On track**: consistent completion, few/no recent misses.
-  - 🟠 **Drifting**: recent misses on milestone tasks, especially ones without a completed feedback/adjustment loop (i.e., failure reason given, but no follow-up action taken).
+  - 🟢 **On track**: fewer than 2 missed milestone tasks in the trailing 7 days, or any misses already have a resolved feedback loop.
+  - 🟠 **Drifting**: ≥2 missed milestone tasks in the trailing 7 days **and** at least one of those misses has no resolved feedback loop (no adjustment accepted or auto-applied). A single miss that the user already closed the loop on stays green — the rule rewards resolving drift, not just avoiding misses.
   - Tapping a drifting goal surfaces a short summary: most common failure reasons logged that month, and a shortcut to review related Journal entries or adjust upcoming tasks.
 - This makes the Dashboard function as an early-warning system, surfacing _patterns_ (not just missed days) before the user falls too far out of their intended flow.
 
 **Secondary Widgets**
 
-- **Mood/consistency mini-chart**: a lightweight visualization (e.g., 7-day or 30-day strip) combining task completion rate and journal mood tags, to correlate emotional state with goal progress over time.
+- **Mood/consistency mini-chart**: two side-by-side sparklines (7-day or 30-day) — one for task completion rate, one for journal mood tags — labeled simply "Your week." Deliberately **not** rendered as a single overlaid "correlation" line, and with no auto-generated insight copy (e.g. no "you complete more when happy") or correlation coefficient. It's meant to be a mirror the user can read into themselves, not a diagnosis the app hands them — correlation ≠ causation, and prescriptive framing here would undercut the supportive tone.
 - **Quick actions**: shortcuts to "Add Daily Task," "New Journal Entry," and "Review a Drifting Goal."
 
 **Visual tone**
@@ -141,11 +147,24 @@ The Dashboard is the entry point of the app — a synthesized view of the ToDo L
 - **Database: Neon (Postgres serverless).** Chosen over Supabase (bundles auth/storage we don't need yet), Turso/SQLite (fewer relational features to learn on), and self-hosted Postgres (infra overhead not worth it for a solo project deploying to Vercel). Neon gives real Postgres with no vendor lock-in and integrates well with Vercel.
 - **ORM: Drizzle.** Chosen over Prisma (heavier runtime, historically worse cold starts in serverless) and Kysely (more manual, no declarative schema). Drizzle is SQL-first, type-safe end to end, and keeps migrations simple via `drizzle-kit`.
 
-# Thinks to think later:
+## Architecture
 
-1. On the "Failure Feedback Loop": You mention the app suggests adjustments (e.g., "reduce tomorrow's practice to 1h"), but who decides whether to accept or reject that suggestion? Is there a friction cost if the user ignores the suggestion? Could that create a secondary failure loop where users dismiss adjustments and then miss the task again?
-2. Milestone vs. Orphan asymmetry: You say orphan tasks are "visually lighter/less emphasized" to signal they matter less. But won't this design pressure users to link everything to a goal, even low-stakes tasks, just to get visual parity? How do you prevent goal bloat?
-3. The "drift indicator" on the Dashboard: You mention it surfaces patterns of missses, but what's the minimum data needed to trigger a "drifting" signal? One miss? Two? A percentage? If the threshold is too sensitive, does it become noise; if too high, does it miss early warning signs?
-4. Journaling linking in both directions: Entries can be linked from ToDo failures or manually linked later. But if a user writes a journal entry first and links it retroactively, they've already done the reflection — is there still value in the app suggesting an "adjustment" to a task that's already past?
-5. The mood/consistency mini-chart: You say it correlates mood tags with task completion, but correlation isn't causation. If mood and completion are uncorrelated, does the chart just become noise? How do you prevent it from being misinterpreted as "be happier to complete tasks"?
-6. Progress % calculation: For a Goal with nested tasks, how is progress calculated? Is it just "tasks completed / total tasks"? What if a user completes 3 easy tasks but misses 1 critical one—should they feel 75% done?
+**Folder layout**
+
+- `app/<module>/page.tsx` + `app/<module>/actions.ts` — each module gets a route with colocated Next.js Server Actions (e.g. `app/todo/`, `app/journal/`).
+- `lib/db/index.ts` — the Drizzle client (`neon-http` driver), exported as `db`.
+- `lib/db/schemas/` — Drizzle table definitions, one file per entity (`goal.ts`, `task.ts`, `journal-entry.ts`), re-exported together via `schemas/index.ts`.
+- `lib/validations/` — Zod schemas per entity, used to parse untrusted input at the start of a Server Action (e.g. `createTaskSchema` in `validations/task.ts`).
+- `lib/services/` — business-rule helpers that Server Actions call into, kept separate from both the DB layer and the action layer so rules like the goal-bloat limit have one home (`services/task.ts`: `getTaskCounter`, `validateTaskLimit`, `getWeekStart`).
+
+**Request flow**
+
+```
+UI → Server Action ("use server") → Zod validation → service-layer rule check → Drizzle query/mutation → return to UI
+```
+
+The goal-bloat rule described above (max 5 active tasks/week/goal) is implemented exactly this way: `createTask` in `app/todo/actions.ts` parses input with `createTaskSchema`, then calls `validateTaskLimit` from `lib/services/task.ts` before inserting.
+
+**Known gaps (as of this writing)**
+
+- `lib/db/schemas/journal-entry.ts` and `lib/validations/journal-entry.ts`/`goal.ts` are stubs — the Journaling and Goal modules don't yet have a validated create/update flow the way `task.ts` does. Treat the Journaling/Goal UI specs above as design targets, not shipped behavior.
