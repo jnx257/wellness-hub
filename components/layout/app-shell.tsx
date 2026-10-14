@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { logout } from "@/app/login/actions";
 
 const NAV_ITEMS = [
   { href: "/", icon: "⌂", label: "Home" },
@@ -50,6 +51,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
         <NavList pathname={pathname} collapsed={collapsed} />
+        <div className="flex-1" />
+        <LogoutButton collapsed={collapsed} />
       </aside>
 
       <div className="flex flex-1 justify-center">
@@ -100,9 +103,27 @@ export function AppShell({ children }: { children: ReactNode }) {
             collapsed={false}
             onNavigate={() => setDrawerOpen(false)}
           />
+          <div className="flex-1" />
+          <LogoutButton collapsed={false} />
         </nav>
       </div>
     </div>
+  );
+}
+
+function LogoutButton({ collapsed }: { collapsed: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => logout()}
+      title="Logout"
+      className={`hover:bg-bg-tab-track text-text-body flex w-full items-center gap-[12px] rounded-[9px] px-[12px] py-[11px] text-[14.5px] font-medium ${
+        collapsed ? "justify-center" : "justify-start"
+      }`}
+    >
+      <span className="text-[16px]">⏻</span>
+      {!collapsed && <span>Logout</span>}
+    </button>
   );
 }
 

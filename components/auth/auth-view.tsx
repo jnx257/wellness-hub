@@ -7,25 +7,21 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 
 type AuthMode = "Sign In" | "Sign Up";
 
-interface AuthSubmitPayload {
-  mode: AuthMode;
-  name: string;
-  birthDate: string;
-  email: string;
-  password: string;
-}
+type AuthActionResult = { ok: false; error: string } | void;
 
 interface AuthViewProps {
-  onSubmit?: (payload: AuthSubmitPayload) => void;
+  signIn: (input: unknown) => Promise<AuthActionResult>;
+  signUp: (input: unknown) => Promise<AuthActionResult>;
 }
 
-export function AuthView({ onSubmit }: AuthViewProps) {
+export function AuthView({ signIn, signUp }: AuthViewProps) {
   const [mode, setMode] = useState<AuthMode>("Sign In");
   const [name, setName] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
 
   const isSignIn = mode === "Sign In";
 
@@ -34,7 +30,7 @@ export function AuthView({ onSubmit }: AuthViewProps) {
     setError("");
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     if (!email || !password || (!isSignIn && !name)) {
@@ -43,7 +39,15 @@ export function AuthView({ onSubmit }: AuthViewProps) {
     }
 
     setError("");
-    onSubmit?.({ mode, name, birthDate, email, password });
+    setPending(true);
+
+    const action = isSignIn ? signIn : signUp;
+    const result = await action({ name, birthDate, email, password });
+
+    setPending(false);
+    if (result && !result.ok) {
+      setError(result.error);
+    }
   }
 
   return (
@@ -147,7 +151,7 @@ export function AuthView({ onSubmit }: AuthViewProps) {
                 </div>
               )}
 
-              <Button type="submit" className="mt-1.5 w-full">
+              <Button type="submit" disabled={pending} className="mt-1.5 w-full">
                 {isSignIn ? "Sign In" : "Create Account"}
               </Button>
 
