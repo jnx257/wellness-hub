@@ -5,8 +5,10 @@ import { tasks } from "@/lib/db/schemas";
 import { createTaskSchema } from "@/lib/validations/task";
 import { gte, and, lt, eq } from "drizzle-orm";
 import { isInTaskLimit } from "@/lib/services/task";
+import { requireUserId } from "@/lib/services/session";
 
 export async function createTask(input: unknown, options?: { force?: boolean }) {
+  const userId = await requireUserId();
   const data = createTaskSchema.parse(input);
   const scheduledFor = data.scheduledFor ?? new Date();
 
@@ -24,6 +26,7 @@ export async function createTask(input: unknown, options?: { force?: boolean }) 
   const [task] = await db
     .insert(tasks)
     .values({
+      userId,
       title: data.title,
       description: data.taskDescription,
       scheduledFor,
@@ -37,8 +40,9 @@ export async function createTask(input: unknown, options?: { force?: boolean }) 
 }
 
 export async function toggleTask(taskId: number) {
+  const userId = await requireUserId();
   const [existing] = await db.select().from(tasks).where(eq(tasks.id, taskId));
-  if (!existing) throw new Error("Task not found");
+  if (!existing || existing.userId !== userId) throw new Error("Task not found");
 
   const [updated] = await db
     .update(tasks)
@@ -50,20 +54,26 @@ export async function toggleTask(taskId: number) {
 }
 
 export async function rescheduleTask(taskId: number) {
+  const userId = await requireUserId();
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
 
   await db
     .update(tasks)
     .set({ scheduledFor: tomorrow })
-    .where(eq(tasks.id, taskId));
+    .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
 }
 
 export async function unlinkTask(taskId: number) {
-  await db.update(tasks).set({ goalId: null }).where(eq(tasks.id, taskId));
+  const userId = await requireUserId();
+  await db
+    .update(tasks)
+    .set({ goalId: null })
+    .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
 }
 
 export async function getTodayTasks() {
+  const userId = await requireUserId();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -74,6 +84,10 @@ export async function getTodayTasks() {
     .select()
     .from(tasks)
     .where(
-      and(gte(tasks.scheduledFor, today), lt(tasks.scheduledFor, tomorrow)),
+      and(
+        eq(tasks.userId, userId),
+        gte(tasks.scheduledFor, today),
+        lt(tasks.scheduledFor, tomorrow),
+      ),
     );
 }

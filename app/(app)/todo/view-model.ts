@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { goals as goalsTable, tasks as tasksTable } from "@/lib/db/schemas";
 import { getWeekStart } from "@/lib/services/task";
@@ -114,10 +115,13 @@ function toTodoTask(task: TaskRow, goalById: Map<number, GoalRow>, now: Date): T
   };
 }
 
-export async function getTodoData(now = new Date()): Promise<TodoData> {
+export async function getTodoData(
+  userId: number,
+  now = new Date(),
+): Promise<TodoData> {
   const [goals, tasks] = await Promise.all([
-    db.select().from(goalsTable),
-    db.select().from(tasksTable),
+    db.select().from(goalsTable).where(eq(goalsTable.userId, userId)),
+    db.select().from(tasksTable).where(eq(tasksTable.userId, userId)),
   ]);
 
   const goalById = new Map(goals.map((g) => [g.id, g]));

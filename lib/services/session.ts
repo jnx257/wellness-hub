@@ -60,3 +60,9 @@ export async function getSession() {
 
   return payload ? { userId: payload.userId } : null;
 }
+
+export async function requireUserId() {
+  const session = await getSession();
+  if (!session) throw new Error("Unauthorized");
+  return session.userId;
+}
