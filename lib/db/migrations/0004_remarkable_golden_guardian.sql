@@ -1,0 +1,1 @@
+ALTER TABLE "tasks" ADD COLUMN "adjustment_updated_at" timestamp DEFAULT now() NOT NULL;

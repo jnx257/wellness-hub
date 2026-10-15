@@ -33,5 +33,9 @@ export const tasks = pgTable("tasks", {
   declinedAdjustmentCount: integer("declined_adjustment_count")
     .notNull()
     .default(0),
+  // When adjustmentStatus last changed — lets the lapse sweep tell "just set
+  // this today" apart from "still pending since an earlier day" without a
+  // cron job (see reconcileLapsedSuggestions in todo/view-model.ts).
+  adjustmentUpdatedAt: timestamp("adjustment_updated_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
