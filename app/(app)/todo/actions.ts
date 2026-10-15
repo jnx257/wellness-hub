@@ -4,8 +4,16 @@ import { db } from "@/lib/db";
 import { tasks } from "@/lib/db/schemas";
 import { createTaskSchema } from "@/lib/validations/task";
 import { gte, and, lt, eq } from "drizzle-orm";
-import { isInTaskLimit } from "@/lib/services/task";
+import { isInTaskLimit, resolveAdjustment, tomorrowFrom } from "@/lib/services/task";
 import { requireUserId } from "@/lib/services/session";
+
+const DECLINE_LIMIT = 3;
+
+async function getOwnedTask(taskId: number, userId: number) {
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
+  if (!task || task.userId !== userId) throw new Error("Task not found");
+  return task;
+}
 
 export async function createTask(input: unknown, options?: { force?: boolean }) {
   const userId = await requireUserId();
@@ -70,6 +78,68 @@ export async function unlinkTask(taskId: number) {
     .update(tasks)
     .set({ goalId: null })
     .where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
+}
+
+export async function setMissedReason(taskId: number, reason: string) {
+  const userId = await requireUserId();
+  await getOwnedTask(taskId, userId);
+
+  await db
+    .update(tasks)
+    .set({
+      missedReason: reason,
+      adjustmentStatus: "suggested",
+      adjustmentUpdatedAt: new Date(),
+    })
+    .where(eq(tasks.id, taskId));
+}
+
+export async function acceptAdjustment(taskId: number) {
+  const userId = await requireUserId();
+  const task = await getOwnedTask(taskId, userId);
+  const adjustment = resolveAdjustment(task.missedReason, new Date());
+
+  await db
+    .update(tasks)
+    .set({
+      scheduledFor: adjustment.scheduledFor,
+      timeOfDay: adjustment.timeOfDay ?? task.timeOfDay,
+      adjustmentStatus: "accepted",
+      declinedAdjustmentCount: 0,
+      adjustmentUpdatedAt: new Date(),
+    })
+    .where(eq(tasks.id, taskId));
+}
+
+export async function declineAdjustment(taskId: number) {
+  const userId = await requireUserId();
+  const task = await getOwnedTask(taskId, userId);
+  const nextCount = task.declinedAdjustmentCount + 1;
+
+  if (nextCount >= DECLINE_LIMIT) {
+    const adjustment = resolveAdjustment(task.missedReason, new Date());
+    await db
+      .update(tasks)
+      .set({
+        scheduledFor: adjustment.scheduledFor,
+        timeOfDay: adjustment.timeOfDay ?? task.timeOfDay,
+        adjustmentStatus: "auto_applied",
+        declinedAdjustmentCount: 0,
+        adjustmentUpdatedAt: new Date(),
+      })
+      .where(eq(tasks.id, taskId));
+    return;
+  }
+
+  await db
+    .update(tasks)
+    .set({
+      scheduledFor: tomorrowFrom(new Date()),
+      adjustmentStatus: "declined",
+      declinedAdjustmentCount: nextCount,
+      adjustmentUpdatedAt: new Date(),
+    })
+    .where(eq(tasks.id, taskId));
 }
 
 export async function getTodayTasks() {

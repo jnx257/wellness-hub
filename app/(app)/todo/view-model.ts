@@ -1,11 +1,14 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { goals as goalsTable, tasks as tasksTable } from "@/lib/db/schemas";
-import { getWeekStart } from "@/lib/services/task";
+import { getWeekStart, resolveAdjustment } from "@/lib/services/task";
 
 type TaskRow = typeof tasksTable.$inferSelect;
 type GoalRow = typeof goalsTable.$inferSelect;
 type TimeOfDay = NonNullable<TaskRow["timeOfDay"]>;
+type AdjustmentStatus = TaskRow["adjustmentStatus"];
+
+const DECLINE_LIMIT = 3;
 
 export type TodoTask = {
   id: number;
@@ -15,6 +18,8 @@ export type TodoTask = {
   missed: boolean;
   deadlineLabel: string | null;
   goalLabel: string | null;
+  missedReason: string | null;
+  adjustmentStatus: AdjustmentStatus;
 };
 
 export type TaskGroup = { period: string; tasks: TodoTask[] };
@@ -112,7 +117,75 @@ function toTodoTask(task: TaskRow, goalById: Map<number, GoalRow>, now: Date): T
         })
       : null,
     goalLabel: goal ? `${goalIcon(goal.category)} ${goal.title}` : null,
+    missedReason: task.missedReason,
+    adjustmentStatus: task.adjustmentStatus,
   };
+}
+
+function isResolved(task: TaskRow) {
+  return task.adjustmentStatus === "accepted" || task.adjustmentStatus === "auto_applied";
+}
+
+/**
+ * "Not responding by end of day counts the same as an explicit decline"
+ * (project.md). Runs lazily on every read instead of a cron job: any task
+ * still awaiting a response ("none"/"suggested") whose status hasn't been
+ * touched since before today is treated as one lapsed cycle, same 3-strike
+ * auto-apply rule as an explicit decline. Keyed off `adjustmentUpdatedAt`
+ * (not `scheduledFor`, which a plain decline/lapse never moves) so a status
+ * set earlier *today* doesn't immediately re-lapse on the next read.
+ * Mutates `tasks` in place so this request's render already reflects the
+ * reconciled state.
+ */
+async function reconcileLapsedSuggestions(tasks: TaskRow[], today: Date, now: Date) {
+  const updates: Promise<unknown>[] = [];
+
+  for (const task of tasks) {
+    if (task.completed) continue;
+    if (task.adjustmentStatus !== "none" && task.adjustmentStatus !== "suggested") continue;
+    if (startOfDay(task.adjustmentUpdatedAt) >= today) continue;
+
+    const nextCount = task.declinedAdjustmentCount + 1;
+
+    if (nextCount >= DECLINE_LIMIT) {
+      const adjustment = resolveAdjustment(task.missedReason, now);
+      task.scheduledFor = adjustment.scheduledFor;
+      task.timeOfDay = adjustment.timeOfDay ?? task.timeOfDay;
+      task.adjustmentStatus = "auto_applied";
+      task.declinedAdjustmentCount = 0;
+      task.adjustmentUpdatedAt = now;
+      updates.push(
+        db
+          .update(tasksTable)
+          .set({
+            scheduledFor: task.scheduledFor,
+            timeOfDay: task.timeOfDay,
+            adjustmentStatus: "auto_applied",
+            declinedAdjustmentCount: 0,
+            adjustmentUpdatedAt: now,
+          })
+          .where(eq(tasksTable.id, task.id)),
+      );
+    } else {
+      task.scheduledFor = addDays(today, 1);
+      task.adjustmentStatus = "declined";
+      task.declinedAdjustmentCount = nextCount;
+      task.adjustmentUpdatedAt = now;
+      updates.push(
+        db
+          .update(tasksTable)
+          .set({
+            scheduledFor: task.scheduledFor,
+            adjustmentStatus: "declined",
+            declinedAdjustmentCount: nextCount,
+            adjustmentUpdatedAt: now,
+          })
+          .where(eq(tasksTable.id, task.id)),
+      );
+    }
+  }
+
+  await Promise.all(updates);
 }
 
 export async function getTodoData(
@@ -126,6 +199,7 @@ export async function getTodoData(
 
   const goalById = new Map(goals.map((g) => [g.id, g]));
   const today = startOfDay(now);
+  await reconcileLapsedSuggestions(tasks, today, now);
   const tomorrow = addDays(today, 1);
   const weekStart = getWeekStart(now);
   const weekEnd = addDays(weekStart, 7);
@@ -162,11 +236,11 @@ export async function getTodoData(
   const goalCards: GoalCard[] = goals.map((goal) => {
     const linked = tasks.filter((t) => t.goalId === goal.id);
     const doneCount = linked.filter((t) => t.completed).length;
-    // We don't persist whether a miss's feedback loop was resolved yet,
-    // so every recent miss counts toward drift.
-    const missesThisWeek = linked.filter(
+    const recentMisses = linked.filter(
       (t) => inRange(t, sevenDaysAgo, tomorrow) && isMissed(t, now),
-    ).length;
+    );
+    const missesThisWeek = recentMisses.length;
+    const hasUnresolvedMiss = recentMisses.some((t) => !isResolved(t));
 
     return {
       id: goal.id,
@@ -176,7 +250,7 @@ export async function getTodoData(
       progress: linked.length
         ? Math.round((doneCount / linked.length) * 100)
         : 0,
-      drifting: missesThisWeek >= 2,
+      drifting: missesThisWeek >= 2 && hasUnresolvedMiss,
       missesThisWeek,
       activeThisWeek: linked.filter(
         (t) => !t.completed && inRange(t, weekStart, weekEnd),

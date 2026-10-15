@@ -6,12 +6,19 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { createTask, rescheduleTask, toggleTask, unlinkTask } from "./actions";
+import {
+  acceptAdjustment,
+  createTask,
+  declineAdjustment,
+  rescheduleTask,
+  setMissedReason,
+  toggleTask,
+  unlinkTask,
+} from "./actions";
 import type { GoalCard, TaskGroup, TodoData, TodoTask } from "./view-model";
 
 type Tab = "Daily" | "Weekly" | "Goals";
 type Period = "Morning" | "Afternoon" | "Evening";
-type Loop = { reason?: string; resolved?: "accepted" | "dismissed" };
 
 const REASONS = ["No time", "Too tired", "Lost motivation", "Unexpected event"];
 
@@ -52,7 +59,6 @@ export function TodoView({
   const [tab, setTab] = useState<Tab>("Daily");
   const [expandedGoals, setExpandedGoals] = useState<Record<number, boolean>>({});
   const [menuFor, setMenuFor] = useState<number | null>(null);
-  const [loops, setLoops] = useState<Record<number, Loop>>({});
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [formTitle, setFormTitle] = useState("");
@@ -66,10 +72,6 @@ export function TodoView({
       await action();
       router.refresh();
     });
-  }
-
-  function setLoop(id: number, patch: Partial<Loop>) {
-    setLoops((s) => ({ ...s, [id]: { ...s[id], ...patch } }));
   }
 
   function openSheet() {
@@ -124,7 +126,11 @@ export function TodoView({
     ? Math.round((doneToday / allToday.length) * 100)
     : 0;
   const unresolved = allToday.filter(
-    (t) => t.missed && !t.done && !loops[t.id]?.resolved,
+    (t) =>
+      t.missed &&
+      !t.done &&
+      t.adjustmentStatus !== "accepted" &&
+      t.adjustmentStatus !== "auto_applied",
   ).length;
 
   const groups = tab === "Weekly" ? weeklyGroups : dailyGroups;
@@ -198,7 +204,6 @@ export function TodoView({
                 key={group.period}
                 group={group}
                 menuFor={menuFor}
-                loops={loops}
                 onToggle={(id) => run(() => toggleTask(id))}
                 onMenu={(id) => setMenuFor((m) => (m === id ? null : id))}
                 onReschedule={(id) => {
@@ -209,7 +214,9 @@ export function TodoView({
                   setMenuFor(null);
                   run(() => unlinkTask(id));
                 }}
-                setLoop={setLoop}
+                onPickReason={(id, reason) => run(() => setMissedReason(id, reason))}
+                onAccept={(id) => run(() => acceptAdjustment(id))}
+                onDecline={(id) => run(() => declineAdjustment(id))}
                 onJournal={goJournal}
               />
             ))}
@@ -445,22 +452,24 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function GroupSection({
   group,
   menuFor,
-  loops,
   onToggle,
   onMenu,
   onReschedule,
   onUnlink,
-  setLoop,
+  onPickReason,
+  onAccept,
+  onDecline,
   onJournal,
 }: {
   group: TaskGroup;
   menuFor: number | null;
-  loops: Record<number, Loop>;
   onToggle: (id: number) => void;
   onMenu: (id: number) => void;
   onReschedule: (id: number) => void;
   onUnlink: (id: number) => void;
-  setLoop: (id: number, patch: Partial<Loop>) => void;
+  onPickReason: (id: number, reason: string) => void;
+  onAccept: (id: number) => void;
+  onDecline: (id: number) => void;
   onJournal: () => void;
 }) {
   const done = group.tasks.filter((t) => t.done).length;
@@ -479,12 +488,13 @@ function GroupSection({
             key={task.id}
             task={task}
             menuOpen={menuFor === task.id}
-            loop={loops[task.id] ?? {}}
             onToggle={() => onToggle(task.id)}
             onMenu={() => onMenu(task.id)}
             onReschedule={() => onReschedule(task.id)}
             onUnlink={() => onUnlink(task.id)}
-            setLoop={(patch) => setLoop(task.id, patch)}
+            onPickReason={(reason) => onPickReason(task.id, reason)}
+            onAccept={() => onAccept(task.id)}
+            onDecline={() => onDecline(task.id)}
             onJournal={onJournal}
           />
         ))}
@@ -496,33 +506,33 @@ function GroupSection({
 function TaskRow({
   task,
   menuOpen,
-  loop,
   onToggle,
   onMenu,
   onReschedule,
   onUnlink,
-  setLoop,
+  onPickReason,
+  onAccept,
+  onDecline,
   onJournal,
 }: {
   task: TodoTask;
   menuOpen: boolean;
-  loop: Loop;
   onToggle: () => void;
   onMenu: () => void;
   onReschedule: () => void;
   onUnlink: () => void;
-  setLoop: (patch: Partial<Loop>) => void;
+  onPickReason: (reason: string) => void;
+  onAccept: () => void;
+  onDecline: () => void;
   onJournal: () => void;
 }) {
   const [otherOpen, setOtherOpen] = useState(false);
   const [otherText, setOtherText] = useState("");
 
   const { milestone, missed, done } = task;
-  const stage = !missed || done
-    ? null
-    : (loop.resolved ?? (loop.reason ? "suggest" : "ask"));
-  const [suggestion, confirmation] = loop.reason
-    ? (SUGGESTIONS[loop.reason] ?? DEFAULT_SUGGESTION)
+  const stage = !missed || done ? null : task.adjustmentStatus === "suggested" ? "suggest" : "ask";
+  const [suggestion] = task.missedReason
+    ? (SUGGESTIONS[task.missedReason] ?? DEFAULT_SUGGESTION)
     : ["", ""];
 
   const checkSize = milestone ? "h-[21px] w-[21px]" : "h-[18px] w-[18px]";
@@ -609,7 +619,7 @@ function TaskRow({
           </div>
           <div className="flex flex-wrap gap-[6px]">
             {REASONS.map((r) => (
-              <ReasonChip key={r} onClick={() => setLoop({ reason: r })}>
+              <ReasonChip key={r} onClick={() => onPickReason(r)}>
                 {r}
               </ReasonChip>
             ))}
@@ -627,7 +637,7 @@ function TaskRow({
               />
               <button
                 type="button"
-                onClick={() => otherText.trim() && setLoop({ reason: otherText.trim() })}
+                onClick={() => otherText.trim() && onPickReason(otherText.trim())}
                 className="bg-accent text-on-primary flex-none rounded-[9px] px-[14px] text-caption font-semibold"
               >
                 Save
@@ -644,13 +654,9 @@ function TaskRow({
         <LoopPanel>
           <div className="flex flex-wrap items-center gap-[8px]">
             <span className="text-text-muted text-[11.5px]">Reason</span>
-            <button
-              type="button"
-              onClick={() => setLoop({ reason: undefined, resolved: undefined })}
-              className="bg-accent text-on-primary rounded-pill px-[10px] py-[4px] text-[11.5px] font-semibold"
-            >
-              {loop.reason} ×
-            </button>
+            <span className="bg-accent text-on-primary rounded-pill px-[10px] py-[4px] text-[11.5px] font-semibold">
+              {task.missedReason}
+            </span>
           </div>
           <div className="flex flex-col gap-[10px] rounded-md bg-[#F7EFE3] px-[14px] py-[12px]">
             <div className="text-accent text-[13px] leading-[1.45] text-pretty">
@@ -659,14 +665,14 @@ function TaskRow({
             <div className="flex flex-wrap items-center gap-[8px]">
               <button
                 type="button"
-                onClick={() => setLoop({ resolved: "accepted" })}
+                onClick={onAccept}
                 className="bg-primary text-on-primary hover:bg-primary-hover rounded-[8px] px-[14px] py-[7px] text-caption font-semibold"
               >
                 Adjust
               </button>
               <button
                 type="button"
-                onClick={() => setLoop({ resolved: "dismissed" })}
+                onClick={onDecline}
                 className="text-accent rounded-[8px] border border-[rgba(94,49,34,0.3)] bg-transparent px-[14px] py-[7px] text-caption font-semibold"
               >
                 Not now
@@ -681,30 +687,6 @@ function TaskRow({
             </div>
           </div>
         </LoopPanel>
-      )}
-
-      {(stage === "accepted" || stage === "dismissed") && (
-        <div
-          className={`mt-[10px] flex items-center gap-[8px] pl-[33px] text-[12.5px] ${
-            stage === "accepted" ? "text-primary" : "text-text-muted"
-          }`}
-        >
-          {stage === "accepted" ? (
-            <>
-              <span className="font-bold">✓</span>
-              <span>{confirmation}</span>
-            </>
-          ) : (
-            <span>Okay — we&apos;ll offer it again tomorrow.</span>
-          )}
-          <button
-            type="button"
-            onClick={() => setLoop({ resolved: undefined })}
-            className="text-text-muted ml-auto text-[11.5px] underline"
-          >
-            Undo
-          </button>
-        </div>
       )}
     </div>
   );
