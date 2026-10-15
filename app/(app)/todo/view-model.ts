@@ -2,6 +2,12 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { goals as goalsTable, tasks as tasksTable } from "@/lib/db/schemas";
 import { getWeekStart, resolveAdjustment } from "@/lib/services/task";
+import {
+  buildGoalCards,
+  goalIcon,
+  isMissed,
+  type GoalCard,
+} from "@/lib/services/goal-card";
 
 type TaskRow = typeof tasksTable.$inferSelect;
 type GoalRow = typeof goalsTable.$inferSelect;
@@ -24,17 +30,7 @@ export type TodoTask = {
 
 export type TaskGroup = { period: string; tasks: TodoTask[] };
 
-export type GoalCard = {
-  id: number;
-  icon: string;
-  title: string;
-  horizon: string;
-  progress: number;
-  drifting: boolean;
-  missesThisWeek: number;
-  activeThisWeek: number;
-  tasks: { id: number; title: string; done: boolean }[];
-};
+export type { GoalCard };
 
 export type TodoData = {
   dateLabel: string;
@@ -59,18 +55,6 @@ const WEEKDAYS = [
   "Sunday",
 ];
 
-const GOAL_ICONS: Record<string, string> = {
-  music: "🎵",
-  piano: "🎹",
-  fitness: "🏃",
-  running: "🏃",
-  reading: "📚",
-};
-
-function goalIcon(category: string | null) {
-  return (category && GOAL_ICONS[category.toLowerCase()]) ?? "🎯";
-}
-
 function startOfDay(date: Date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -81,24 +65,6 @@ function addDays(date: Date, days: number) {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
-}
-
-function isMissed(task: TaskRow, now: Date) {
-  if (!task.goalId || task.completed) return false;
-
-  // Deadlines come from a date-only input (UTC midnight); treat them as due end of that day.
-  if (task.deadline && addDays(task.deadline, 1) <= now) return true;
-  if (!task.scheduledFor) return false;
-
-  const today = startOfDay(now);
-  if (task.scheduledFor < today) return true;
-
-  const slot = TIME_OF_DAY.find((t) => t.key === task.timeOfDay);
-  return (
-    !!slot &&
-    task.scheduledFor < addDays(today, 1) &&
-    now.getHours() >= slot.endsAtHour
-  );
 }
 
 function toTodoTask(task: TaskRow, goalById: Map<number, GoalRow>, now: Date): TodoTask {
@@ -120,10 +86,6 @@ function toTodoTask(task: TaskRow, goalById: Map<number, GoalRow>, now: Date): T
     missedReason: task.missedReason,
     adjustmentStatus: task.adjustmentStatus,
   };
-}
-
-function isResolved(task: TaskRow) {
-  return task.adjustmentStatus === "accepted" || task.adjustmentStatus === "auto_applied";
 }
 
 /**
@@ -203,7 +165,6 @@ export async function getTodoData(
   const tomorrow = addDays(today, 1);
   const weekStart = getWeekStart(now);
   const weekEnd = addDays(weekStart, 7);
-  const sevenDaysAgo = addDays(today, -7);
 
   const inRange = (t: TaskRow, from: Date, to: Date) =>
     !!t.scheduledFor && t.scheduledFor >= from && t.scheduledFor < to;
@@ -233,31 +194,7 @@ export async function getTodoData(
     };
   }).filter((g) => g.tasks.length > 0);
 
-  const goalCards: GoalCard[] = goals.map((goal) => {
-    const linked = tasks.filter((t) => t.goalId === goal.id);
-    const doneCount = linked.filter((t) => t.completed).length;
-    const recentMisses = linked.filter(
-      (t) => inRange(t, sevenDaysAgo, tomorrow) && isMissed(t, now),
-    );
-    const missesThisWeek = recentMisses.length;
-    const hasUnresolvedMiss = recentMisses.some((t) => !isResolved(t));
-
-    return {
-      id: goal.id,
-      icon: goalIcon(goal.category),
-      title: goal.title,
-      horizon: goal.period.charAt(0).toUpperCase() + goal.period.slice(1),
-      progress: linked.length
-        ? Math.round((doneCount / linked.length) * 100)
-        : 0,
-      drifting: missesThisWeek >= 2 && hasUnresolvedMiss,
-      missesThisWeek,
-      activeThisWeek: linked.filter(
-        (t) => !t.completed && inRange(t, weekStart, weekEnd),
-      ).length,
-      tasks: linked.map((t) => ({ id: t.id, title: t.title, done: t.completed })),
-    };
-  });
+  const goalCards = buildGoalCards(goals, tasks, now);
 
   return {
     dateLabel: now.toLocaleDateString("en-US", {
