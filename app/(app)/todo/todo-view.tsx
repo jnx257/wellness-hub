@@ -92,7 +92,8 @@ export function TodoView({
     setExpandedGoals((s) => ({ ...s, [id]: true }));
   }
 
-  const goJournal = () => router.push("/journal");
+  const goJournal = (taskId?: number) =>
+    router.push(taskId ? `/journal?taskId=${taskId}` : "/journal");
 
   const activeByGoal = new Map(goals.map((g) => [g.id, g.activeThisWeek]));
   const showBloat =
@@ -217,7 +218,7 @@ export function TodoView({
                 onPickReason={(id, reason) => run(() => setMissedReason(id, reason))}
                 onAccept={(id) => run(() => acceptAdjustment(id))}
                 onDecline={(id) => run(() => declineAdjustment(id))}
-                onJournal={goJournal}
+                onJournal={(task) => goJournal(task.id)}
               />
             ))}
           </div>
@@ -301,7 +302,7 @@ export function TodoView({
             </div>
             <button
               type="button"
-              onClick={goJournal}
+              onClick={() => goJournal()}
               className="bg-bg-app text-accent self-start rounded-[9px] px-[14px] py-[9px] text-[12.5px] font-semibold"
             >
               Write a reflection
@@ -470,7 +471,7 @@ function GroupSection({
   onPickReason: (id: number, reason: string) => void;
   onAccept: (id: number) => void;
   onDecline: (id: number) => void;
-  onJournal: () => void;
+  onJournal: (task: TodoTask) => void;
 }) {
   const done = group.tasks.filter((t) => t.done).length;
 
@@ -495,7 +496,7 @@ function GroupSection({
             onPickReason={(reason) => onPickReason(task.id, reason)}
             onAccept={() => onAccept(task.id)}
             onDecline={() => onDecline(task.id)}
-            onJournal={onJournal}
+            onJournal={() => onJournal(task)}
           />
         ))}
       </div>
