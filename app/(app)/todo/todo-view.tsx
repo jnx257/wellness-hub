@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import {
   acceptAdjustment,
+  createGoalAction,
   createTask,
   declineAdjustment,
   rescheduleTask,
@@ -19,8 +20,10 @@ import type { GoalCard, TaskGroup, TodoData, TodoTask } from "./view-model";
 
 type Tab = "Daily" | "Weekly" | "Goals";
 type Period = "Morning" | "Afternoon" | "Evening";
+type GoalPeriod = "Monthly" | "Quarterly" | "Yearly";
 
 const REASONS = ["No time", "Too tired", "Lost motivation", "Unexpected event"];
+const CATEGORIES = ["Music", "Piano", "Fitness", "Running", "Reading"];
 
 const SUGGESTIONS: Record<string, [offer: string, confirmation: string]> = {
   "No time": [
@@ -67,6 +70,10 @@ export function TodoView({
   const [formDeadline, setFormDeadline] = useState("");
   const [serverWarning, setServerWarning] = useState(false);
 
+  const [goalFormTitle, setGoalFormTitle] = useState("");
+  const [goalFormCategory, setGoalFormCategory] = useState<string | null>(null);
+  const [goalFormPeriod, setGoalFormPeriod] = useState<GoalPeriod>("Monthly");
+
   function run(action: () => Promise<unknown>) {
     startTransition(async () => {
       await action();
@@ -85,6 +92,9 @@ export function TodoView({
     setFormGoalId(null);
     setFormDeadline("");
     setServerWarning(false);
+    setGoalFormTitle("");
+    setGoalFormCategory(null);
+    setGoalFormPeriod("Monthly");
   }
 
   function showGoal(id: number) {
@@ -116,6 +126,19 @@ export function TodoView({
       setServerWarning(true);
       return;
     }
+    closeSheet();
+    router.refresh();
+  }
+
+  const canSubmitGoal = !!goalFormTitle.trim();
+
+  async function submitGoal() {
+    if (!canSubmitGoal) return;
+    await createGoalAction({
+      title: goalFormTitle.trim(),
+      category: goalFormCategory?.trim() || undefined,
+      period: goalFormPeriod.toLowerCase(),
+    });
     closeSheet();
     router.refresh();
   }
@@ -187,7 +210,7 @@ export function TodoView({
             onClick={openSheet}
             className="bg-primary text-on-primary hover:bg-primary-hover hidden flex-none rounded-md px-[18px] py-[11px] text-[13.5px] font-semibold min-[900px]:block"
           >
-            + Add task
+            {tab === "Goals" ? "+ New goal" : "+ Add task"}
           </button>
         </div>
 
@@ -314,7 +337,7 @@ export function TodoView({
       <button
         type="button"
         onClick={openSheet}
-        aria-label="Add task"
+        aria-label={tab === "Goals" ? "New goal" : "Add task"}
         className="bg-primary text-on-primary shadow-fab hover:bg-primary-hover fixed right-[24px] bottom-[24px] z-30 flex h-[54px] w-[54px] items-center justify-center rounded-full text-[24px] min-[900px]:hidden"
       >
         +
@@ -335,7 +358,9 @@ export function TodoView({
         }`}
       >
         <div className="flex items-center justify-between">
-          <span className="text-primary text-[18px] font-bold">New task</span>
+          <span className="text-primary text-[18px] font-bold">
+            {tab === "Goals" ? "New goal" : "New task"}
+          </span>
           <button
             type="button"
             onClick={closeSheet}
@@ -346,78 +371,132 @@ export function TodoView({
           </button>
         </div>
 
-        <Field label="Task">
-          <Input
-            value={formTitle}
-            onChange={(e) => setFormTitle(e.target.value)}
-            placeholder="e.g. Practice scales"
-          />
-        </Field>
+        {tab === "Goals" ? (
+          <>
+            <Field label="Goal">
+              <Input
+                value={goalFormTitle}
+                onChange={(e) => setGoalFormTitle(e.target.value)}
+                placeholder="e.g. Run a 10k"
+              />
+            </Field>
 
-        <Field label="Time of day">
-          <SegmentedControl
-            options={["Morning", "Afternoon", "Evening"] as const}
-            value={formPeriod}
-            onChange={setFormPeriod}
-          />
-        </Field>
+            <Field label="Category (optional)">
+              <div className="flex flex-wrap gap-[8px]">
+                {CATEGORIES.map((c) => (
+                  <ReasonChip
+                    key={c}
+                    active={goalFormCategory === c}
+                    onClick={() => setGoalFormCategory((cur) => (cur === c ? null : c))}
+                  >
+                    {c}
+                  </ReasonChip>
+                ))}
+              </div>
+              <Input
+                value={
+                  goalFormCategory && !CATEGORIES.includes(goalFormCategory)
+                    ? goalFormCategory
+                    : ""
+                }
+                onChange={(e) => setGoalFormCategory(e.target.value || null)}
+                placeholder="Something else…"
+              />
+            </Field>
 
-        <Field label="Deadline (optional)">
-          <Input
-            type="date"
-            value={formDeadline}
-            onChange={(e) => setFormDeadline(e.target.value)}
-          />
-        </Field>
+            <Field label="Horizon">
+              <SegmentedControl
+                options={["Monthly", "Quarterly", "Yearly"] as const}
+                value={goalFormPeriod}
+                onChange={setGoalFormPeriod}
+              />
+            </Field>
 
-        <Field label="Link to a goal (optional)">
-          <div className="flex flex-wrap gap-[8px]">
-            {[null, ...goals].map((g) => {
-              const id = g?.id ?? null;
-              const on = formGoalId === id;
-              return (
-                <button
-                  key={id ?? "none"}
-                  type="button"
-                  onClick={() => {
-                    setFormGoalId(id);
-                    setServerWarning(false);
-                  }}
-                  className={`text-label flex items-center gap-[6px] rounded-pill border px-[13px] py-[8px] font-semibold ${
-                    on
-                      ? "border-accent bg-accent text-on-primary"
-                      : "border-border-accent text-accent bg-transparent"
-                  }`}
-                >
-                  {g ? `${g.icon} ${g.title}` : "None"}
-                  {g && (
-                    <span className="font-medium opacity-70">
-                      {g.activeThisWeek}/{GOAL_LIMIT}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {showBloat && (
-            <div className="bg-warning/12 rounded-[9px] px-[12px] py-[10px] text-[12.5px] leading-[1.45] text-[#9A5B2A]">
-              This goal already has 5 active tasks this week — link anyway?
-            </div>
-          )}
-          <p className="text-text-muted text-[11.5px] leading-[1.45]">
-            Goal-linked tasks are milestones. If one slips, we&apos;ll ask why
-            and help you adjust.
-          </p>
-        </Field>
+            <Button
+              type="button"
+              onClick={submitGoal}
+              disabled={!canSubmitGoal}
+              className="mt-auto w-full"
+            >
+              Add goal
+            </Button>
+          </>
+        ) : (
+          <>
+            <Field label="Task">
+              <Input
+                value={formTitle}
+                onChange={(e) => setFormTitle(e.target.value)}
+                placeholder="e.g. Practice scales"
+              />
+            </Field>
 
-        <Button
-          type="button"
-          onClick={submitTask}
-          disabled={!canSubmit}
-          className="mt-auto w-full"
-        >
-          {showBloat ? "Link anyway" : "Add task"}
-        </Button>
+            <Field label="Time of day">
+              <SegmentedControl
+                options={["Morning", "Afternoon", "Evening"] as const}
+                value={formPeriod}
+                onChange={setFormPeriod}
+              />
+            </Field>
+
+            <Field label="Deadline (optional)">
+              <Input
+                type="date"
+                value={formDeadline}
+                onChange={(e) => setFormDeadline(e.target.value)}
+              />
+            </Field>
+
+            <Field label="Link to a goal (optional)">
+              <div className="flex flex-wrap gap-[8px]">
+                {[null, ...goals].map((g) => {
+                  const id = g?.id ?? null;
+                  const on = formGoalId === id;
+                  return (
+                    <button
+                      key={id ?? "none"}
+                      type="button"
+                      onClick={() => {
+                        setFormGoalId(id);
+                        setServerWarning(false);
+                      }}
+                      className={`text-label flex items-center gap-[6px] rounded-pill border px-[13px] py-[8px] font-semibold ${
+                        on
+                          ? "border-accent bg-accent text-on-primary"
+                          : "border-border-accent text-accent bg-transparent"
+                      }`}
+                    >
+                      {g ? `${g.icon} ${g.title}` : "None"}
+                      {g && (
+                        <span className="font-medium opacity-70">
+                          {g.activeThisWeek}/{GOAL_LIMIT}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {showBloat && (
+                <div className="bg-warning/12 rounded-[9px] px-[12px] py-[10px] text-[12.5px] leading-[1.45] text-[#9A5B2A]">
+                  This goal already has 5 active tasks this week — link anyway?
+                </div>
+              )}
+              <p className="text-text-muted text-[11.5px] leading-[1.45]">
+                Goal-linked tasks are milestones. If one slips, we&apos;ll ask why
+                and help you adjust.
+              </p>
+            </Field>
+
+            <Button
+              type="button"
+              onClick={submitTask}
+              disabled={!canSubmit}
+              className="mt-auto w-full"
+            >
+              {showBloat ? "Link anyway" : "Add task"}
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

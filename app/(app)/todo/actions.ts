@@ -3,8 +3,10 @@
 import { db } from "@/lib/db";
 import { tasks } from "@/lib/db/schemas";
 import { createTaskSchema } from "@/lib/validations/task";
+import { createGoalSchema } from "@/lib/validations/goal";
 import { gte, and, lt, eq } from "drizzle-orm";
 import { isInTaskLimit, resolveAdjustment, tomorrowFrom } from "@/lib/services/task";
+import { createGoal } from "@/lib/services/goal";
 import { requireUserId } from "@/lib/services/session";
 
 const DECLINE_LIMIT = 3;
@@ -140,6 +142,14 @@ export async function declineAdjustment(taskId: number) {
       adjustmentUpdatedAt: new Date(),
     })
     .where(eq(tasks.id, taskId));
+}
+
+export async function createGoalAction(input: unknown) {
+  const userId = await requireUserId();
+  const data = createGoalSchema.parse(input);
+
+  const goal = await createGoal({ ...data, userId });
+  return goal;
 }
 
 export async function getTodayTasks() {
